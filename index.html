@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        h1 {
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+        .controls {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .buttons {
+            display: flex;
+            gap: 8px;
+        }
+        button {
+            background: #ffffff;
+            color: #2c2c2c;
+            border: 1px solid #666666;
+            padding: 6px 20px;
+            font-family: monospace;
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #e0e0e0;
+        }
+        .sliders label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+        .sliders input[type=range] {
+            flex: 1;
+            accent-color: #2ecc71;
+        }
+        .sliders span {
+            width: 30px;
+            text-align: right;
+            color: #2ecc71
+        }
+        .readout {
+            display: flex;
+            gap: 40px;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: #666666;
+        }
+        .readout string {
+            color: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <h1>Quantum Tunneling Simulator</h1>
+    <canvas id="sim" width="800" height="300" style="width: 100%; border: 5px solid rgb(125, 125, 125)"></canvas>
+    
+    <div class="controls">
+        <div class="buttons">
+            <button onclick="ws.send('reset')">Reset</button>
+            <button onclick="togglePause(this)">▶</button>
+        </div>
+        <div class="sliders">
+            <label>Barrier Height<input id="heightSlider" type="range" min="0" max="100" value="15" oninput="updateHeight(this.value)"><span id="heightVal">15</span></label>
+            <label>Barrier Width<input id="widthSlider" type="range" min="0" max="50" value="10" oninput="updateWidth(this.value)"><span id="widthVal">10</span></label>
+            <label>Momentum<input id="momentumSlider" type="range" min="0" max="20" value="5" oninput="updateK(this.value)"><span id="momentum">5</span></label>
+        </div>
+        <div class="readout">
+            <span>Reflected: <strong id="leftProb">0%</strong></span>
+            <span>Tunneled: <strong id="rightProb">0%</strong></span>
+        </div>
+    </div>
+    <script>
+        let paused = false
+
+        function togglePause(btn) {
+            paused = !paused
+            ws.send(paused ? "pause" : "resume")
+            btn.textContent = paused ? "▶" : "⏸"
+        }
+
+        const canvas = document.getElementById("sim")
+        const ctx = canvas.getContext("2d")
+    
+        const ws = new WebSocket("ws://localhost:8765")
+        ws.binaryType = "arraybuffer"
+
+        ws.onmessage = function(event) {
+            const numbers = new Float32Array(event.data)
+        }
+
+        ws.onmessage = function(event) {
+            const buffer = event.data
+            const numbers = new Float32Array(buffer, 0, 1000)
+            const extras = new Float32Array(buffer, 1000 * 4, 2)
+            const left = extras[0]
+            const right = extras[1]
+
+            ctx.save()
+            ctx.beginPath()
+            ctx.roundRect(0, 0, canvas.width, canvas.height, 20)
+            ctx.clip()
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx.beginPath()
+            ctx.moveTo(0, canvas.height - numbers[0] * (canvas.height / Math.max(...numbers)))
+            for (let i = 0; i < numbers.length; i++) {
+                const px = (i / numbers.length) * canvas.width
+                const maxProb = 1.1  // fixed scale
+                const py = canvas.height - numbers[i] * (canvas.height / maxProb)
+                ctx.lineTo(px, py)
+            }
+            ctx.strokeStyle = "rgb(255, 75, 10)"
+            ctx.stroke() // draw the probability density
+            
+            const barrierWidthPx = (document.getElementById("widthSlider").value * 2/1000) * canvas.width
+            const barrierHeightPx = (document.getElementById("heightSlider").value) * 2
+            
+            ctx.fillStyle = "rgba(75, 255, 75, 0.5)"
+            ctx.fillRect(canvas.width / 2 - barrierWidthPx / 2, canvas.height - barrierHeightPx, barrierWidthPx, barrierHeightPx)
+
+            document.getElementById("leftProb").textContent = (left * 100).toFixed(1) + "%"
+            document.getElementById("rightProb").textContent = (right * 100).toFixed(1) + "%"
+        }
+        ctx.restore()
+
+        function updateHeight(value) {
+            document.getElementById("barrierHeight").textContent = value
+            const width = document.getElementById("widthSlider").value
+            const momentum = document.getElementById("momentumSlider").value
+            ws.send("barrier:" + value + ":" + width + ":" + momentum)
+        }
+
+        function updateWidth(value) {
+            document.getElementById("barrierWidth").textContent = value
+            const height = document.getElementById("heightSlider").value
+            const momentum = document.getElementById("momentumSlider").value
+            ws.send("barrier:" + height + ":" + value + ":" + momentum)
+        }
+
+        function updateK(value) {
+            document.getElementById("momentum").textContent = value
+            const width = document.getElementById("widthSlider").value
+            const height = document.getElementById("heightSlider").value
+            ws.send("barrier:" + height + ":" + width + ":" + value)
+        }
+
+    </script>
+
+</body>
+</html>
